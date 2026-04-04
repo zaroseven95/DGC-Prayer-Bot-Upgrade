@@ -13,7 +13,7 @@ from telegram.ext import (
 
 # ===== CONFIG =====
 ADMIN_ID = 6021933432
-TOKEN = "8370065008:AAF5da1nMVxH2UCFKN-wGQhga63P90ADge0"
+TOKEN = "8370065008:AAGIcf9711pA7_qle7Cx4GSXmDVY50OVBRo"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -174,20 +174,27 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     update_streak(user_id)
 
-    total_today = get_today_total(user_id)
-
     h = int(duration // 3600)
     m = int((duration % 3600) // 60)
     s = int(duration % 60)
 
+    total_today = get_today_total(user_id)
+
     if total_today >= 7200:
-        msg = "✅ You have completed your 2 hours today. WELL DONE SOLDIER 🫡🔥"
+        msg = (
+            f"✅ You stopped at {h}h {m}m {s}s\n\n"
+            "🔥 You have completed your 2 hours today.\n"
+            "👏 Well done Soldier!"
+        )
     else:
         remaining = 7200 - total_today
+
         msg = (
-            f"🔥 You prayed for {h}h {m}m {s}s\n\n"
-            f"⏳ Remaining: {int(remaining//60)} minutes\n"
-            f"💪 Keep going — build your spiritual strength!"
+            f"⛔ You stopped at {h}h {m}m {s}s\n\n"
+            "⚠️ You have NOT reached 2 hours yet.\n"
+            f"⏳ Remaining: {int(remaining//60)} minutes\n\n"
+            "💪 Do not leave the altar incomplete.\n"
+            "🔥 Continue pressing until you finish your assignment!"
         )
 
     await update.message.reply_text(msg)
@@ -257,9 +264,9 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message)
 
 
-# ===== BUTTON HANDLER =====
+# ===== BUTTON HANDLER (FIXED) =====
 async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    text = update.message.text.strip()
 
     if text == "🔥 Pray":
         await pray(update, context)
@@ -315,7 +322,6 @@ app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("join", join))
-
 app.add_handler(CommandHandler("pray", pray))
 app.add_handler(CommandHandler("stop", stop))
 app.add_handler(CommandHandler("status", status))
