@@ -1,0 +1,41 @@
+import sqlite3
+
+conn = sqlite3.connect("prayer.db", check_same_thread=False)
+cursor = conn.cursor()
+
+# Create table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    name TEXT,
+    total_seconds INTEGER DEFAULT 0,
+    last_pray_start INTEGER DEFAULT 0,
+    is_praying INTEGER DEFAULT 0
+)
+""")
+
+conn.commit()
+
+def add_user(user_id, name):
+    cursor.execute("INSERT OR IGNORE INTO users (user_id, name) VALUES (?, ?)", (user_id, name))
+    conn.commit()
+
+def start_prayer(user_id, timestamp):
+    cursor.execute("UPDATE users SET last_pray_start = ?, is_praying = 1 WHERE user_id = ?", (timestamp, user_id))
+    conn.commit()
+
+def stop_prayer(user_id, duration):
+    cursor.execute("""
+    UPDATE users 
+    SET total_seconds = total_seconds + ?, is_praying = 0 
+    WHERE user_id = ?
+    """, (duration, user_id))
+    conn.commit()
+
+def get_user(user_id):
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    return cursor.fetchone()
+
+def get_all_users():
+    cursor.execute("SELECT * FROM users ORDER BY total_seconds DESC")
+    return cursor.fetchall()
