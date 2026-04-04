@@ -83,7 +83,7 @@ async def pray(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if user_id in active_sessions:
-        await update.message.reply_text("⚠️ Already praying")
+        await update.message.reply_text("⚠️ You are Already praying. Keep mounting preasure!")
         return
 
     active_sessions[user_id] = datetime.utcnow()
@@ -117,11 +117,11 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if duration < 7200:
         await update.message.reply_text(
             f"⚠️ You prayed for {format_duration(duration)}\n"
-            "🔥 Continue until 2 hours!"
+            "🔥 Ahhhh... You are not under atack; go back and MOUNT PREASURE until 2 hours!"
         )
     else:
         await update.message.reply_text(
-            f"🔥 Completed {format_duration(duration)}\nWell done Soldier!"
+            f"🔥 Completed {format_duration(duration)}\nChai!!! Well-done Soldier!"
         )
 
 
