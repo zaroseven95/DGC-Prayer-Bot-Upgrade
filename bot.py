@@ -111,7 +111,7 @@ async def pray(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if user_id in active_sessions:
-        await update.message.reply_text("⚠️ Already praying")
+        await update.message.reply_text("⚠️ You are already mounting preasure🔥")
         return
 
     active_sessions[user_id] = datetime.utcnow()
@@ -123,7 +123,7 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if user_id not in active_sessions:
-        await update.message.reply_text("❌ Not praying.")
+        await update.message.reply_text("❌ Not praying. Soldier, wake-up your strenght lets make Jesus proud")
         return
 
     start = active_sessions.pop(user_id)
@@ -136,7 +136,7 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"⚠️ {format_duration(elapsed)}\n"
-            "🔥 Continue to reach 2 hours!",
+            "🔥 Ahhhh... You are not under atack!🙌 Continue Praying💪🔥",
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
     else:
@@ -167,7 +167,7 @@ async def end_prayer(update, user_id, duration):
     update_streak(user_id)
 
     await update.message.reply_text(
-        f"🔥 Completed {format_duration(duration)}\n"
+        f"🔥 Chai! Your Conversion Rate is High. Completed {format_duration(duration)}\n"
         f"🏆 Rank: {get_rank(duration)}"
     )
 
@@ -291,7 +291,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["🔥 Pray", "⛔ Stop"], ["▶️ Continue", "🛑 End Prayer"], ["📊 My Time", "📍 Status"]]
 
     await update.message.reply_text(
-        "🔥 Welcome Soldier\n/join YourName",
+        "🔥 Soldier, Pick up your sword there is warfare in front. It's time to make Jesus proud.🫡\n/join YourName",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
 
