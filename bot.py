@@ -3,11 +3,17 @@ import sqlite3
 from datetime import datetime, timedelta, time
 
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 # ===== CONFIG =====
 ADMIN_ID = 6021933432
-TOKEN = "8370065008:AAF5da1nMVxH2UCFKN-wGQhga63P90ADge0"
+TOKEN = "YOUR_BOT_TOKEN_HERE"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -36,14 +42,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 conn.commit()
 
-# ===== GLOBAL =====
+# ===== ACTIVE SESSIONS =====
 active_sessions = {}
 
-# ===== MENU BUTTONS =====
+# ===== BUTTON MENU =====
 menu = ReplyKeyboardMarkup(
     [
         ["🔥 Pray", "⛔ Stop"],
         ["📊 My Time", "🏆 Leaderboard"],
+        ["📍 Status"]
     ],
     resize_keyboard=True
 )
@@ -76,6 +83,7 @@ def update_streak(user_id):
 
     if last_date:
         last_date = datetime.fromisoformat(last_date).date()
+
         if today == last_date:
             return
         elif today == last_date + timedelta(days=1):
@@ -105,6 +113,7 @@ def get_rank(total_seconds):
         return "🛡️ Captain"
     else:
         return "👑 General"
+
 
 # ===== COMMANDS =====
 
@@ -141,6 +150,7 @@ async def pray(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     active_sessions[user_id] = datetime.utcnow()
+
     await update.message.reply_text("🔥 Prayer started")
 
 
@@ -148,7 +158,7 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if user_id not in active_sessions:
-        await update.message.reply_text("❌ You have not started")
+        await update.message.reply_text("❌ You have not started praying")
         return
 
     start_time = active_sessions.pop(user_id)
@@ -171,13 +181,34 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s = int(duration % 60)
 
     if total_today >= 7200:
-        msg = "✅ You have completed your 2 hours today!"
+        msg = "✅ You have completed your 2 hours today. WELL DONE SOLDIER 🫡🔥"
     else:
         remaining = 7200 - total_today
-        msg = f"🔥 Remaining today: {int(remaining//60)} minutes"
+        msg = (
+            f"🔥 You prayed for {h}h {m}m {s}s\n\n"
+            f"⏳ Remaining: {int(remaining//60)} minutes\n"
+            f"💪 Keep going — build your spiritual strength!"
+        )
+
+    await update.message.reply_text(msg)
+
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in active_sessions:
+        await update.message.reply_text("❌ You are not currently praying.")
+        return
+
+    start_time = active_sessions[user_id]
+    elapsed = (datetime.utcnow() - start_time).total_seconds()
+
+    h = int(elapsed // 3600)
+    m = int((elapsed % 3600) // 60)
+    s = int(elapsed % 60)
 
     await update.message.reply_text(
-        f"⛔ Stopped\n⏱ {h}h {m}m {s}s\n\n{msg}"
+        f"🔥 You are currently praying\n\n⏱ {h}h {m}m {s}s"
     )
 
 
@@ -191,10 +222,10 @@ async def mytime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     m = int((total % 3600) // 60)
     s = int(total % 60)
 
-    rank = get_rank(total)
-
     cursor.execute("SELECT streak FROM users WHERE user_id=?", (user_id,))
     streak = cursor.fetchone()[0]
+
+    rank = get_rank(total)
 
     await update.message.reply_text(
         f"📊 Your Stats:\n\n"
@@ -232,12 +263,18 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "🔥 Pray":
         await pray(update, context)
+
     elif text == "⛔ Stop":
         await stop(update, context)
+
     elif text == "📊 My Time":
         await mytime(update, context)
+
     elif text == "🏆 Leaderboard":
         await leaderboard(update, context)
+
+    elif text == "📍 Status":
+        await status(update, context)
 
 
 # ===== DAILY REPORT =====
@@ -259,10 +296,16 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     message = f"📅 Daily Report ({today})\n\n"
 
     for name, start, end, duration in rows:
-        h = duration // 3600
-        m = (duration % 3600) // 60
+        h = int(duration // 3600)
+        m = int((duration % 3600) // 60)
+        s = int(duration % 60)
 
-        message += f"{name}\nStart: {start}\nEnd: {end}\nTime: {h}h {m}m\n\n"
+        message += (
+            f"👤 {name}\n"
+            f"🕘 Start: {start}\n"
+            f"🕚 End: {end}\n"
+            f"⏱ Duration: {h}h {m}m {s}s\n\n"
+        )
 
     await context.bot.send_message(chat_id=ADMIN_ID, text=message)
 
@@ -272,10 +315,14 @@ app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("join", join))
+
+app.add_handler(CommandHandler("pray", pray))
+app.add_handler(CommandHandler("stop", stop))
+app.add_handler(CommandHandler("status", status))
+
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
 
 job_queue = app.job_queue
-
 if job_queue:
     job_queue.run_daily(send_daily_report, time=time(23, 0))
 
