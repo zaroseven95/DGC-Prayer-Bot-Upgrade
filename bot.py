@@ -7,7 +7,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Messa
 
 # ===== CONFIG =====
 ADMIN_ID = 6021933432
-TOKEN = "YOUR_NEW_TOKEN"
+TOKEN = "8370065008:AAF5da1nMVxH2UCFKN-wGQhga63P90ADge0"
 
 logging.basicConfig(level=logging.INFO)
 
