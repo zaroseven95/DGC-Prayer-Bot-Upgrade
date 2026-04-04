@@ -167,7 +167,7 @@ async def end_prayer(update, user_id, duration):
     update_streak(user_id)
 
     await update.message.reply_text(
-        f"🔥 Chai! Your Conversion Rate is High. Completed {format_duration(duration)}\n"
+        f"Prayer Session Ended {format_duration(duration)}\n"
         f"🏆 Rank: {get_rank(duration)}"
     )
 
