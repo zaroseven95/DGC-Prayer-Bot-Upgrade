@@ -89,15 +89,6 @@ async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
             elapsed_seconds = paused_sessions.pop(user_id)
             active_sessions[user_id] = now() - timedelta(seconds=elapsed_seconds)
             await query.edit_message_text("🔥 Standard maintained! Prayer is continuing automatically. Keep mounting pressure!")
-            # Send the Battlefield Charge
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="🔥 *Dear Soldier of Christ,*\n\n"
-                     "Kindly unmute your mic and engage. This is a moment of spiritual alignment—your voice is not ordinary; it carries fire.\n\n"
-                     "The battlefield is active, and your sound is needed. Do not be a spectator—release your prayers, release your fire.\n\n"
-                     "🔥 *Engage now!*",
-                parse_mode="Markdown"
-            )
         else:
             await query.edit_message_text("⚠️ No session found to resume.")
 
@@ -117,6 +108,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📝 Register":
         awaiting_name.add(user_id)
+        # Added the italicized verse beneath the instruction
         await update.message.reply_text(
             "📝 Enter your name:\n\n"
             "_\"For the weapons of our warfare are not carnal, but mighty through God to the pulling down of strong holds.\"\n2 Corinthians 10:4_",
@@ -174,24 +166,15 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not registered:
             await update.message.reply_text("❌ Register first")
         else:
-            battle_charge = (
-                "🔥 *Dear Soldier of Christ,*\n\n"
-                "Kindly unmute your mic and engage. This is a moment of spiritual alignment—your voice is not ordinary; it carries fire.\n\n"
-                "The battlefield is active, and your sound is needed. Do not be a spectator—release your prayers, release your fire.\n\n"
-                "🔥 *Engage now!*"
-            )
-
             if user_id in paused_sessions:
                 p_time = paused_sessions.pop(user_id)
                 active_sessions[user_id] = now() - timedelta(seconds=p_time)
                 await update.message.reply_text("▶️ Resuming... back to the battlefield!")
-                await update.message.reply_text(battle_charge, parse_mode="Markdown")
             elif user_id in active_sessions:
                 await update.message.reply_text("⚠️ Already mounting pressure 🔥")
             else:
                 active_sessions[user_id] = now()
                 await update.message.reply_text("🔥 You are mounting pressure")
-                await update.message.reply_text(battle_charge, parse_mode="Markdown")
 
     elif text == "🛑 End Prayer":
         duration = 0
@@ -232,7 +215,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= START =================
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔥 Blessed be the Lord that teacheth my hands to war. Psalm 144:1", reply_markup=main_menu(update.effective_user.id))
+    await update.message.reply_text("🔥 Blessed be the Lord that teacheth my hands to war.Psalm 144:1", reply_markup=main_menu(update.effective_user.id))
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start_cmd))
