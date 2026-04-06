@@ -55,21 +55,29 @@ def format_duration(seconds):
 
 # ================= MENU =================
 
-def main_menu(registered=True):
+def main_menu(user_id):
+    registered = is_registered(user_id)
+    
     if not registered:
-        return ReplyKeyboardMarkup([
+        keyboard = [
             ["📝 Register"],
             ["📘 Guide", "🏆 Leaderboard"],
             ["👥 Live Room"]
-        ], resize_keyboard=True)
+        ]
+    else:
+        keyboard = [
+            ["🔥 Pray", "⛔ Stop"],
+            ["▶️ Continue", "🛑 End Prayer"],
+            ["📊 My Time", "🏆 Leaderboard"],
+            ["📍 Status", "📘 Guide"],
+            ["👥 Live Room"]
+        ]
+    
+    # Add Admin Report button ONLY for the admin
+    if user_id == ADMIN_ID:
+        keyboard.append(["⚙️ Admin Report"])
 
-    return ReplyKeyboardMarkup([
-        ["🔥 Pray", "⛔ Stop"],
-        ["▶️ Continue", "🛑 End Prayer"],
-        ["📊 My Time", "🏆 Leaderboard"],
-        ["📍 Status", "📘 Guide"],
-        ["👥 Live Room"]
-    ], resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # ================= LOGIC =================
 
@@ -78,13 +86,13 @@ async def pray(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in paused_sessions:
         paused_time = paused_sessions.pop(user_id)
         active_sessions[user_id] = now() - timedelta(seconds=paused_time)
-        await update.message.reply_text("▶️ Resumed prayer 🔥", reply_markup=main_menu())
+        await update.message.reply_text("▶️ Resumed prayer 🔥", reply_markup=main_menu(user_id))
         return
     if user_id in active_sessions:
         await update.message.reply_text("⚠️ Already praying 🔥")
         return
     active_sessions[user_id] = now()
-    await update.message.reply_text("🔥 Prayer started", reply_markup=main_menu())
+    await update.message.reply_text("🔥 Prayer started", reply_markup=main_menu(user_id))
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -94,12 +102,17 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_time = active_sessions.pop(user_id)
     elapsed = int((now() - start_time).total_seconds())
     paused_sessions[user_id] = elapsed
-    await update.message.reply_text(f"⏸ Paused at {format_duration(elapsed)}", reply_markup=main_menu())
+    await update.message.reply_text(f"⏸ Paused at {format_duration(elapsed)}", reply_markup=main_menu(user_id))
 
 async def end_prayer(update: Update, user_id: int, duration: int):
+    # Rule: 7200 seconds = 2 hours
     if duration < 7200:
-        await update.message.reply_text(f"⚠️ Only {format_duration(duration)}.\n❌ Min 2 hours required to save.")
+        await update.message.reply_text(
+            f"⏱ Session: {format_duration(duration)}\n\n"
+            "⚠️ You are not under attack, soldier. Why do you want to abscond? Get back to the battlefield!"
+        )
         return
+
     end_time = now()
     start_time_val = end_time - timedelta(seconds=duration)
     cursor.execute("""
@@ -107,17 +120,21 @@ async def end_prayer(update: Update, user_id: int, duration: int):
         VALUES (?, ?, ?, ?)
     """, (user_id, start_time_val.strftime('%Y-%m-%d %H:%M:%S'), end_time.strftime('%Y-%m-%d %H:%M:%S'), duration))
     conn.commit()
-    await update.message.reply_text(f"✅ Saved! ⏱ {format_duration(duration)}", reply_markup=main_menu())
+
+    await update.message.reply_text(
+        f"✅ Completed: {format_duration(duration)}\n\n"
+        "🔥 Chai! Your Conversion Rate is High. Weldone!",
+        reply_markup=main_menu(user_id)
+    )
 
 # ================= ADMIN FEATURE =================
 
 async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("🚫 Unauthorized. Admin only.")
+        await update.message.reply_text("🚫 Unauthorized.")
         return
 
-    # Fetch last 20 sessions with user names
     cursor.execute("""
         SELECT users.name, sessions.start_time, sessions.end_time, sessions.duration_seconds
         FROM sessions
@@ -128,12 +145,11 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = cursor.fetchall()
 
     if not rows:
-        await update.message.reply_text("📂 No prayer records found in database.")
+        await update.message.reply_text("📂 No prayer records found.")
         return
 
     report = "📋 **RECENT PRAYER RECORDS**\n\n"
     for name, start, end, duration in rows:
-        # Extract date from start_time string
         date_str = start.split(" ")[0]
         report += (
             f"👤 **{name}**\n"
@@ -144,10 +160,7 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"--- --- --- ---\n"
         )
     
-    # Telegram has a 4096 char limit per message
-    if len(report) > 4000:
-        report = report[:3900] + "\n... (Truncated)"
-
+    if len(report) > 4000: report = report[:3900] + "\n... (Truncated)"
     await update.message.reply_text(report, parse_mode="Markdown")
 
 # ================= HANDLERS =================
@@ -161,7 +174,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("INSERT INTO users (user_id, name) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET name=excluded.name", (user_id, text))
         conn.commit()
         awaiting_name.remove(user_id)
-        await update.message.reply_text(f"✅ Registered as {text}", reply_markup=main_menu(True))
+        await update.message.reply_text(f"✅ Registered as {text}", reply_markup=main_menu(user_id))
         return
 
     if text == "📝 Register":
@@ -173,8 +186,10 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await leaderboard(update, context)
     elif text == "👥 Live Room":
         await live_room(update, context)
+    elif text == "⚙️ Admin Report": # Handle the new button
+        await admin_report(update, context)
     elif not registered:
-        await update.message.reply_text("❌ Register first", reply_markup=main_menu(False))
+        await update.message.reply_text("❌ Register first", reply_markup=main_menu(user_id))
     elif text == "🔥 Pray":
         await pray(update, context)
     elif text == "⛔ Stop":
@@ -236,13 +251,13 @@ async def guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await update.message.reply_text("🔥 Welcome to Prayer WatchLog", reply_markup=main_menu(bool(is_registered(user_id))))
+    await update.message.reply_text("🔥 Welcome to Prayer WatchLog", reply_markup=main_menu(user_id))
 
 # ================= APP =================
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start_cmd))
-app.add_handler(CommandHandler("admin_report", admin_report)) # <-- NEW ADMIN COMMAND
+app.add_handler(CommandHandler("admin_report", admin_report)) 
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
 
 print("🔥 BOT RUNNING...")
