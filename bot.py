@@ -5,7 +5,7 @@ from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKe
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
 # ================= CONFIG =================
-TOKEN = "YOUR_NEW_TOKEN_HERE" 
+TOKEN = "8370065008:AAH6EHamu3fvoLxelMgvpzS8pmWBDs-Zh5g" 
 ADMIN_ID = 6021933432
 PRAYER_DRIVE_LINK = "https://t.me/c/3754852727/885"
 
@@ -86,10 +86,8 @@ async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text("❌ Session discarded. You have exited the battlefield.")
     
     elif query.data == "keep_praying":
-        # Check if they have a saved duration in paused_sessions
         if user_id in paused_sessions:
             elapsed_seconds = paused_sessions.pop(user_id)
-            # Re-calculate the start time as (now - previously elapsed time)
             active_sessions[user_id] = now() - timedelta(seconds=elapsed_seconds)
             await query.edit_message_text("🔥 Standard maintained! Prayer is continuing automatically. Keep mounting pressure!")
         else:
@@ -164,7 +162,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not registered:
             await update.message.reply_text("❌ Register first")
         else:
-            # Reusing the prayer logic
             if user_id in paused_sessions:
                 p_time = paused_sessions.pop(user_id)
                 active_sessions[user_id] = now() - timedelta(seconds=p_time)
@@ -178,14 +175,13 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🛑 End Prayer":
         duration = 0
         if user_id in active_sessions:
-            # If they hit end while active, we calculate current duration and move to paused temp
             start_t = active_sessions.pop(user_id)
             duration = int((now() - start_t).total_seconds())
             paused_sessions[user_id] = duration 
         elif user_id in paused_sessions:
             duration = paused_sessions[user_id]
 
-        if duration >= 7200: # 2 Hours
+        if duration >= 7200:
             end_time = now()
             start_time_val = end_time - timedelta(seconds=duration)
             cursor.execute("INSERT INTO sessions (user_id, start_time, end_time, duration_seconds) VALUES (?, ?, ?, ?)", 
