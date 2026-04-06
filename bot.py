@@ -75,7 +75,6 @@ def main_menu(user_id):
 # ================= CALLBACK LOGIC (INLINE BUTTONS) =================
 
 async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the user clicking 'Exit & Discard' or 'Keep Praying'"""
     query = update.callback_query
     user_id = query.from_user.id
     await query.answer()
@@ -109,7 +108,12 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📝 Register":
         awaiting_name.add(user_id)
-        await update.message.reply_text("📝 Enter your name:")
+        # Added the italicized verse beneath the instruction
+        await update.message.reply_text(
+            "📝 Enter your name:\n\n"
+            "_\"For the weapons of our warfare are not carnal, but mighty through God to the pulling down of strong holds.\"\n2 Corinthians 10:4_",
+            parse_mode="Markdown"
+        )
     
     elif text == "📂 Prayer Drive":
         keyboard = [[InlineKeyboardButton("Open Prayer Drive 📂", url=PRAYER_DRIVE_LINK)]]
@@ -218,5 +222,5 @@ app.add_handler(CommandHandler("start", start_cmd))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
 app.add_handler(CallbackQueryHandler(handle_exit_choice))
 
-print("🔥 BOT RUNNING (Auto-Continue Enabled)...")
+print("🔥 BOT RUNNING...")
 app.run_polling()
