@@ -269,7 +269,7 @@ async def guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await update.message.reply_text("🔥 Welcome to Prayer WatchLog", reply_markup=main_menu(user_id))
+    await update.message.reply_text("⚔️ Soldier Pick up your sword there is warfare in front! 🛡️", reply_markup=main_menu(user_id))
 
 # ================= APP =================
 
