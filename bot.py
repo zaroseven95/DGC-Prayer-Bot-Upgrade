@@ -40,6 +40,7 @@ awaiting_name = set()
 # ================= HELPERS =================
 
 def now():
+    # Adjusting to UTC+1 (e.g., West Africa Time)
     return datetime.now(timezone.utc) + timedelta(hours=1)
 
 def is_registered(user_id):
@@ -64,7 +65,6 @@ def main_menu(user_id):
             ["👥 Live Room"]
         ]
     else:
-        # Removed "⛔ Stop" button from the keyboard
         keyboard = [
             ["🔥 Mount Pressure"],
             ["▶️ Continue", "🛑 End Prayer"],
@@ -82,17 +82,14 @@ def main_menu(user_id):
 
 async def pray(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    # Check if they have a paused session to resume
     if user_id in paused_sessions:
         paused_time = paused_sessions.pop(user_id)
         active_sessions[user_id] = now() - timedelta(seconds=paused_time)
-        await update.message.reply_text("▶️ Resuming the fire! Back to battlefield 🔥", reply_markup=main_menu(user_id))
+        await update.message.reply_text("▶️ Back to battlefield 🔥", reply_markup=main_menu(user_id))
         return
-    
     if user_id in active_sessions:
         await update.message.reply_text("⚠️ Already mounting pressure 🔥")
         return
-        
     active_sessions[user_id] = now()
     await update.message.reply_text("🔥 You are mounting pressure", reply_markup=main_menu(user_id))
 
@@ -101,8 +98,8 @@ async def end_prayer_logic(update: Update, user_id: int, duration: int):
     if duration < 7200:
         await update.message.reply_text(
             f"⏱ Session: {format_duration(duration)}\n\n"
-            "⚠️ Soldier, you haven't hit the 2-hour mark! Get back to the battlefield!\n\n"
-            "Your time is preserved. Use '▶️ Continue' or '🔥 Mount Pressure' to keep going."
+            "⚠️ Ah! You are not under attack, soldier. Why do you want to abscond? Get back to the battlefield!\n\n"
+            "Minimum 2 hours required to save. Your time is preserved in 'Continue'."
         )
         return False
 
@@ -159,112 +156,4 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= HANDLERS =================
 
-async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    user_id = update.effective_user.id
-    registered = is_registered(user_id)
-
-    if user_id in awaiting_name:
-        cursor.execute("INSERT INTO users (user_id, name) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET name=excluded.name", (user_id, text))
-        conn.commit()
-        awaiting_name.remove(user_id)
-        await update.message.reply_text(f"✅ Registered as {text}", reply_markup=main_menu(user_id))
-        return
-
-    if text == "📝 Register":
-        awaiting_name.add(user_id)
-        await update.message.reply_text("📝 Enter your name:")
-    elif text == "📘 Guide":
-        await guide(update, context)
-    elif text == "🏆 Leaderboard":
-        await leaderboard(update, context)
-    elif text == "👥 Live Room":
-        await live_room(update, context)
-    elif text == "⚙️ Admin Report":
-        await admin_report(update, context)
-    elif not registered:
-        await update.message.reply_text("❌ Register first", reply_markup=main_menu(user_id))
-    elif text in ["🔥 Mount Pressure", "▶️ Continue"]:
-        await pray(update, context)
-    elif text == "🛑 End Prayer":
-        duration = 0
-        current_source = None
-        
-        if user_id in paused_sessions:
-            duration = paused_sessions[user_id]
-            current_source = "paused"
-        elif user_id in active_sessions:
-            start_t = active_sessions[user_id]
-            duration = int((now() - start_t).total_seconds())
-            current_source = "active"
-
-        if duration > 0:
-            success = await end_prayer_logic(update, user_id, duration)
-            if success:
-                active_sessions.pop(user_id, None)
-                paused_sessions.pop(user_id, None)
-            else:
-                # If session < 2hrs, move active to paused so time isn't lost
-                if current_source == "active":
-                    start_t = active_sessions.pop(user_id)
-                    paused_sessions[user_id] = int((now() - start_t).total_seconds())
-        else:
-            await update.message.reply_text("❌ No active session found to end.")
-    elif text == "📊 My Time":
-        await mytime(update, context)
-    elif text == "📍 Status":
-        await status(update, context)
-
-# ================= VIEWS =================
-
-async def live_room(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not active_sessions:
-        await update.message.reply_text("😴 No one is currently praying.")
-        return
-    text = "🔥 LIVE PRAYER ROOM\n\n"
-    for uid, start_t in active_sessions.items():
-        cursor.execute("SELECT name FROM users WHERE user_id=?", (uid,))
-        res = cursor.fetchone()
-        name = res[0] if res else "Unknown"
-        text += f"👤 {name}\n⏱ {format_duration(int((now()-start_t).total_seconds()))}\n\n"
-    await update.message.reply_text(text)
-
-async def mytime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    cursor.execute("SELECT SUM(duration_seconds) FROM sessions WHERE user_id=?", (user_id,))
-    total = cursor.fetchone()[0] or 0
-    await update.message.reply_text(f"📊 Total Time: {format_duration(total)}")
-
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("SELECT u.name, SUM(s.duration_seconds) as t FROM sessions s JOIN users u ON u.user_id = s.user_id GROUP BY u.user_id ORDER BY t DESC LIMIT 10")
-    rows = cursor.fetchall()
-    text = "🏆 LEADERBOARD\n\n" + "\n".join([f"{i}. {r[0]} — {format_duration(r[1])}" for i, r in enumerate(rows, 1)])
-    await update.message.reply_text(text if rows else "No data.")
-
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id in active_sessions:
-        d, s = int((now() - active_sessions[user_id]).total_seconds()), "Praying 🔥"
-    elif user_id in paused_sessions:
-        d, s = paused_sessions[user_id], "Preserved Time ⏳"
-    else:
-        await update.message.reply_text("❌ Not praying.")
-        return
-    await update.message.reply_text(f"Status: {s}\n⏱ {format_duration(d)}")
-
-async def guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📘 HOW TO USE\n\n🔥 Mount Pressure -> Start\n🛑 End Prayer -> Save\n⚠️ 2hrs minimum required to save.")
-
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    await update.message.reply_text("🔥 Welcome to Prayer WatchLog", reply_markup=main_menu(user_id))
-
-# ================= APP =================
-
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start_cmd))
-app.add_handler(CommandHandler("admin_report", admin_report)) 
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-
-print("🔥 BOT RUNNING (Stop button removed)...")
-app.run_polling()
+async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
