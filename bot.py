@@ -6,7 +6,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 
 # ================= CONFIG =================
 # ⚠️ REPLACE WITH A NEW TOKEN FROM BOTFATHER
-TOKEN = "8370065008:AAG_8-fXJ3Giiivm9ZSJZHQ6ISncBuPCokg" 
+TOKEN = "8370065008:AAEB6zCbHLOakKb16bt-NKqc5P9FSaQOtgc" 
 ADMIN_ID = 6021933432
 
 # The link to the specific PDF message in your group
@@ -44,7 +44,6 @@ awaiting_name = set()
 # ================= HELPERS =================
 
 def now():
-    # Adjusting to UTC+1 (Nigeria/UK Winter time)
     return datetime.now(timezone.utc) + timedelta(hours=1)
 
 def is_registered(user_id):
@@ -98,12 +97,11 @@ async def pray(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔥 You are mounting pressure", reply_markup=main_menu(user_id))
 
 async def end_prayer_logic(update: Update, user_id: int, duration: int):
-    # Rule: 7200 seconds = 2 hours
     if duration < 7200:
         await update.message.reply_text(
             f"⏱ Session: {format_duration(duration)}\n\n"
             "⚠️ Soldier, you haven't hit the 2-hour mark! Get back to the battlefield!\n\n"
-            "Your time is preserved. Use '▶️ Continue' or '🔥 Mount Pressure' to keep going."
+            "Your time is preserved. Use ▶️ Continue or 🔥 Mount Pressure to keep going."
         )
         return False
 
@@ -143,11 +141,11 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📂 No prayer records found.")
         return
 
-    report = "📋 **RECENT PRAYER RECORDS**\n\n"
+    report = "📋 RECENT PRAYER RECORDS\n\n"
     for name, start, end, duration in rows:
         date_str = start.split(" ")[0]
         report += (
-            f"👤 **{name}**\n"
+            f"👤 {name}\n"
             f"📅 Date: {date_str}\n"
             f"🕒 Start: {start.split(' ')[1]}\n"
             f"🕓 End: {end.split(' ')[1]}\n"
@@ -156,7 +154,7 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     
     if len(report) > 4000: report = report[:3900] + "\n... (Truncated)"
-    await update.message.reply_text(report, parse_mode="Markdown")
+    await update.message.reply_text(report)
 
 # ================= HANDLERS =================
 
@@ -177,22 +175,23 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📝 Enter your name:")
     
     elif text == "📂 Prayer Drive":
-        # Create an Inline Button that links to the group message
         keyboard = [[InlineKeyboardButton("Open Prayer Drive 📂", url=PRAYER_DRIVE_LINK)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
+        # Direct response with just the button link
         await update.message.reply_text(
-            "🛡️ **ACCESS RESTRICTED**\n\nOnly members of the official group can access these resources. Tap below to open the drive:",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            "Tap below to open the drive:",
+            reply_markup=reply_markup
         )
 
     elif text == "📘 Guide":
+        # Removed ** markers, using Markdown bold
         await update.message.reply_text(
-            "📘 **HOW TO USE**\n\n"
-            "🔥 **Mount Pressure** -> Start your prayer session.\n"
-            "🛑 **End Prayer** -> Save your record.\n"
-            "📂 **Prayer Drive** -> Access the manual (Group members only).\n\n"
-            "⚠️ **Note:** 2 hours minimum required to save a session."
+            "📘 *HOW TO USE*\n\n"
+            "*🔥 Mount Pressure* -> Start your prayer session.\n"
+            "*🛑 End Prayer* -> Save your record.\n"
+            "*📂 Prayer Drive* -> Access the manual.\n\n"
+            "⚠️ *Note:* 2 hours minimum required to save a session.",
+            parse_mode="Markdown"
         )
 
     elif text == "🏆 Leaderboard":
