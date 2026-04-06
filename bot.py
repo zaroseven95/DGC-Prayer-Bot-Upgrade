@@ -5,7 +5,7 @@ from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKe
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
 # ================= CONFIG =================
-TOKEN = "8370065008:AAFhiIhDveyKagW9NzXrwE3zon2viWcSUAg"
+TOKEN = "8370065008:AAFgY71N4j74S_kiGG9pRH6MgANkVYHSeVM" 
 ADMIN_ID = 6021933432
 PRAYER_DRIVE_LINK = "https://t.me/c/3754852727/885"
 
@@ -72,7 +72,7 @@ def main_menu(user_id):
 
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================= CALLBACK LOGIC =================
+# ================= CALLBACK LOGIC (INLINE BUTTONS) =================
 
 async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -89,14 +89,17 @@ async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
             elapsed_seconds = paused_sessions.pop(user_id)
             active_sessions[user_id] = now() - timedelta(seconds=elapsed_seconds)
             await query.edit_message_text("🔥 Standard maintained! Prayer is continuing automatically. Keep mounting pressure!")
-            
-            battle_charge = (
-                "🔥 *Dear Soldier of Christ,*\n\n"
-                "Kindly unmute your mic and engage. This is a moment of spiritual alignment—your voice is not ordinary; it carries fire.\n\n"
-                "The battlefield is active, and your sound is needed. Do not be a spectator—release your prayers, release your fire.\n\n"
-                "🔥 *Engage now!*"
+            # Send the Battlefield Charge
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="🔥 *Dear Soldier of Christ,*\n\n"
+                     "Kindly unmute your mic and engage. This is a moment of spiritual alignment—your voice is not ordinary; it carries fire.\n\n"
+                     "The battlefield is active, and your sound is needed. Do not be a spectator—release your prayers, release your fire.\n\n"
+                     "🔥 *Engage now!*",
+                parse_mode="Markdown"
             )
-            await context.bot.send_message(chat_id=user_id, text=battle_charge, parse_mode="Markdown")
+        else:
+            await query.edit_message_text("⚠️ No session found to resume.")
 
 # ================= HANDLERS =================
 
@@ -171,42 +174,70 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not registered:
             await update.message.reply_text("❌ Register first")
         else:
-            battle_charge = "🔥 *Dear Soldier of Christ,*\n\nKindly unmute your mic and engage..."
+            battle_charge = (
+                "🔥 *Dear Soldier of Christ,*\n\n"
+                "Kindly unmute your mic and engage. This is a moment of spiritual alignment—your voice is not ordinary; it carries fire.\n\n"
+                "The battlefield is active, and your sound is needed. Do not be a spectator—release your prayers, release your fire.\n\n"
+                "🔥 *Engage now!*"
+            )
+
             if user_id in paused_sessions:
                 p_time = paused_sessions.pop(user_id)
                 active_sessions[user_id] = now() - timedelta(seconds=p_time)
-                await update.message.reply_text("▶️ Resuming battlefield!")
+                await update.message.reply_text("▶️ Resuming... back to the battlefield!")
+                await update.message.reply_text(battle_charge, parse_mode="Markdown")
+            elif user_id in active_sessions:
+                await update.message.reply_text("⚠️ Already mounting pressure 🔥")
             else:
                 active_sessions[user_id] = now()
-                await update.message.reply_text("🔥 Mounting Pressure!")
-            await update.message.reply_text(battle_charge, parse_mode="Markdown")
+                await update.message.reply_text("🔥 You are mounting pressure")
+                await update.message.reply_text(battle_charge, parse_mode="Markdown")
 
     elif text == "🛑 End Prayer":
         duration = 0
         if user_id in active_sessions:
             start_t = active_sessions.pop(user_id)
             duration = int((now() - start_t).total_seconds())
-            paused_sessions[user_id] = duration
-        
+            paused_sessions[user_id] = duration 
+        elif user_id in paused_sessions:
+            duration = paused_sessions[user_id]
+
         if duration >= 7200:
-            cursor.execute("INSERT INTO sessions (user_id, duration_seconds) VALUES (?, ?)", (user_id, duration))
+            end_time = now()
+            start_time_val = end_time - timedelta(seconds=duration)
+            cursor.execute("INSERT INTO sessions (user_id, start_time, end_time, duration_seconds) VALUES (?, ?, ?, ?)", 
+                           (user_id, start_time_val.strftime('%Y-%m-%d %H:%M:%S'), end_time.strftime('%Y-%m-%d %H:%M:%S'), duration))
             conn.commit()
             paused_sessions.pop(user_id, None)
-            await update.message.reply_text(f"✅ Completed: {format_duration(duration)}")
+            await update.message.reply_text(f"✅ Completed: {format_duration(duration)}\n🔥 High Conversion Rate! Welldone!")
         elif duration > 0:
-            keyboard = [[InlineKeyboardButton("✅ Keep Praying", callback_data="keep_praying")], [InlineKeyboardButton("❌ Exit & Discard", callback_data="exit_discard")]]
-            await update.message.reply_text("⚠️ Soldier, 2 hours not reached!", reply_markup=InlineKeyboardMarkup(keyboard))
+            keyboard = [
+                [InlineKeyboardButton("✅ Keep Praying", callback_data="keep_praying")],
+                [InlineKeyboardButton("❌ Exit & Discard", callback_data="exit_discard")]
+            ]
+            await update.message.reply_text(
+                f"⏱ Session: {format_duration(duration)}\n\n"
+                "⚠️ Soldier, you haven't hit the 2-hour mark! If you exit now, this time will be lost. What do you want to do?",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            await update.message.reply_text("❌ No active session.")
+
+    elif text == "⚙️ Admin Report" and user_id == ADMIN_ID:
+        cursor.execute("SELECT users.name, sessions.duration_seconds FROM sessions JOIN users ON users.user_id = sessions.user_id ORDER BY sessions.id DESC LIMIT 10")
+        rows = cursor.fetchall()
+        report = "📋 RECENT RECORDS\n\n" + "\n".join([f"👤 {r[0]} - {format_duration(r[1])}" for r in rows])
+        await update.message.reply_text(report if rows else "No records.")
 
 # ================= START =================
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    scripture = "🔥 *Jeremiah 51:20*\n“You are My battle-ax and weapons of war...\""
-    await update.message.reply_text(scripture, reply_markup=main_menu(update.effective_user.id), parse_mode="Markdown")
+    await update.message.reply_text("🔥 Blessed be the Lord that teacheth my hands to war. Psalm 144:1", reply_markup=main_menu(update.effective_user.id))
 
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-    app.add_handler(CallbackQueryHandler(handle_exit_choice))
-    print("🔥 BOT RUNNING...")
-    app.run_polling()
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start_cmd))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
+app.add_handler(CallbackQueryHandler(handle_exit_choice))
+
+print("🔥 BOT RUNNING...")
+app.run_polling()
