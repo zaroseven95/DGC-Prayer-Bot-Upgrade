@@ -1,12 +1,16 @@
 import sqlite3
+import os
 from datetime import datetime, timedelta, timezone
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 # ================= CONFIG =================
 # ⚠️ REPLACE WITH A NEW TOKEN FROM BOTFATHER
 TOKEN = "8370065008:AAG_8-fXJ3Giiivm9ZSJZHQ6ISncBuPCokg" 
 ADMIN_ID = 6021933432
+
+# The link to the specific PDF message in your group
+PRAYER_DRIVE_LINK = "https://t.me/c/3754852727/885"
 
 # ================= DATABASE =================
 conn = sqlite3.connect("prayer.db", check_same_thread=False)
@@ -40,7 +44,7 @@ awaiting_name = set()
 # ================= HELPERS =================
 
 def now():
-    # Adjusting to UTC+1 (e.g., West Africa Time)
+    # Adjusting to UTC+1 (Nigeria/UK Winter time)
     return datetime.now(timezone.utc) + timedelta(hours=1)
 
 def is_registered(user_id):
@@ -70,7 +74,7 @@ def main_menu(user_id):
             ["▶️ Continue", "🛑 End Prayer"],
             ["📊 My Time", "🏆 Leaderboard"],
             ["📍 Status", "📘 Guide"],
-            ["👥 Live Room"]
+            ["👥 Live Room", "📂 Prayer Drive"]
         ]
     
     if user_id == ADMIN_ID:
@@ -98,8 +102,8 @@ async def end_prayer_logic(update: Update, user_id: int, duration: int):
     if duration < 7200:
         await update.message.reply_text(
             f"⏱ Session: {format_duration(duration)}\n\n"
-            "⚠️ Ah! You are not under attack, soldier. Why do you want to abscond? Get back to the battlefield!\n\n"
-            "Minimum 2 hours required to save. Your time is preserved in 'Continue'."
+            "⚠️ Soldier, you haven't hit the 2-hour mark! Get back to the battlefield!\n\n"
+            "Your time is preserved. Use '▶️ Continue' or '🔥 Mount Pressure' to keep going."
         )
         return False
 
@@ -156,4 +160,116 @@ async def admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= HANDLERS =================
 
-async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
+async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    user_id = update.effective_user.id
+    registered = is_registered(user_id)
+
+    if user_id in awaiting_name:
+        cursor.execute("INSERT INTO users (user_id, name) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET name=excluded.name", (user_id, text))
+        conn.commit()
+        awaiting_name.remove(user_id)
+        await update.message.reply_text(f"✅ Registered as {text}", reply_markup=main_menu(user_id))
+        return
+
+    if text == "📝 Register":
+        awaiting_name.add(user_id)
+        await update.message.reply_text("📝 Enter your name:")
+    
+    elif text == "📂 Prayer Drive":
+        # Create an Inline Button that links to the group message
+        keyboard = [[InlineKeyboardButton("Open Prayer Drive 📂", url=PRAYER_DRIVE_LINK)]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "🛡️ **ACCESS RESTRICTED**\n\nOnly members of the official group can access these resources. Tap below to open the drive:",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+    elif text == "📘 Guide":
+        await update.message.reply_text(
+            "📘 **HOW TO USE**\n\n"
+            "🔥 **Mount Pressure** -> Start your prayer session.\n"
+            "🛑 **End Prayer** -> Save your record.\n"
+            "📂 **Prayer Drive** -> Access the manual (Group members only).\n\n"
+            "⚠️ **Note:** 2 hours minimum required to save a session."
+        )
+
+    elif text == "🏆 Leaderboard":
+        cursor.execute("SELECT u.name, SUM(s.duration_seconds) as t FROM sessions s JOIN users u ON u.user_id = s.user_id GROUP BY u.user_id ORDER BY t DESC LIMIT 10")
+        rows = cursor.fetchall()
+        leader_text = "🏆 LEADERBOARD\n\n" + "\n".join([f"{i}. {r[0]} — {format_duration(r[1])}" for i, r in enumerate(rows, 1)])
+        await update.message.reply_text(leader_text if rows else "No data.")
+
+    elif text == "👥 Live Room":
+        if not active_sessions:
+            await update.message.reply_text("😴 No one is currently praying.")
+            return
+        live_text = "🔥 LIVE PRAYER ROOM\n\n"
+        for uid, start_t in active_sessions.items():
+            cursor.execute("SELECT name FROM users WHERE user_id=?", (uid,))
+            res = cursor.fetchone()
+            name = res[0] if res else "Unknown"
+            live_text += f"👤 {name}\n⏱ {format_duration(int((now()-start_t).total_seconds()))}\n\n"
+        await update.message.reply_text(live_text)
+
+    elif text == "📊 My Time":
+        cursor.execute("SELECT SUM(duration_seconds) FROM sessions WHERE user_id=?", (user_id,))
+        total = cursor.fetchone()[0] or 0
+        await update.message.reply_text(f"📊 Total Time: {format_duration(total)}")
+
+    elif text == "📍 Status":
+        if user_id in active_sessions:
+            d, s = int((now() - active_sessions[user_id]).total_seconds()), "Praying 🔥"
+        elif user_id in paused_sessions:
+            d, s = paused_sessions[user_id], "Preserved Time ⏳"
+        else:
+            await update.message.reply_text("❌ Not praying.")
+            return
+        await update.message.reply_text(f"Status: {s}\n⏱ {format_duration(d)}")
+
+    elif text == "⚙️ Admin Report":
+        await admin_report(update, context)
+
+    elif not registered:
+        await update.message.reply_text("❌ Register first", reply_markup=main_menu(user_id))
+
+    elif text in ["🔥 Mount Pressure", "▶️ Continue"]:
+        await pray(update, context)
+
+    elif text == "🛑 End Prayer":
+        duration = 0
+        current_source = None
+        if user_id in paused_sessions:
+            duration = paused_sessions[user_id]
+            current_source = "paused"
+        elif user_id in active_sessions:
+            start_t = active_sessions[user_id]
+            duration = int((now() - start_t).total_seconds())
+            current_source = "active"
+
+        if duration > 0:
+            success = await end_prayer_logic(update, user_id, duration)
+            if success:
+                active_sessions.pop(user_id, None)
+                paused_sessions.pop(user_id, None)
+            else:
+                if current_source == "active":
+                    start_t = active_sessions.pop(user_id)
+                    paused_sessions[user_id] = int((now() - start_t).total_seconds())
+        else:
+            await update.message.reply_text("❌ No active session.")
+
+# ================= START =================
+
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    await update.message.reply_text("🔥 Welcome to Prayer WatchLog", reply_markup=main_menu(user_id))
+
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start_cmd))
+app.add_handler(CommandHandler("admin_report", admin_report)) 
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
+
+print("🔥 BOT RUNNING...")
+app.run_polling()
