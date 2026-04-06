@@ -66,7 +66,8 @@ def main_menu(user_id):
         ]
     else:
         keyboard = [
-            ["🔥 Pray", "⛔ Stop"],
+            ["🔥 Mount 
+            preaure", "⛔ Stop"],
             ["▶️ Continue", "🛑 End Prayer"],
             ["📊 My Time", "🏆 Leaderboard"],
             ["📍 Status", "📘 Guide"],
@@ -86,13 +87,13 @@ async def pray(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in paused_sessions:
         paused_time = paused_sessions.pop(user_id)
         active_sessions[user_id] = now() - timedelta(seconds=paused_time)
-        await update.message.reply_text("▶️ Resumed prayer 🔥", reply_markup=main_menu(user_id))
+        await update.message.reply_text("▶️Back to batlefield 🔥", reply_markup=main_menu(user_id))
         return
     if user_id in active_sessions:
-        await update.message.reply_text("⚠️ Already praying 🔥")
+        await update.message.reply_text("⚠️ Already mounting preasure 🔥")
         return
     active_sessions[user_id] = now()
-    await update.message.reply_text("🔥 Prayer started", reply_markup=main_menu(user_id))
+    await update.message.reply_text("🔥 You are mounting preasure", reply_markup=main_menu(user_id))
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -109,7 +110,7 @@ async def end_prayer(update: Update, user_id: int, duration: int):
     if duration < 7200:
         await update.message.reply_text(
             f"⏱ Session: {format_duration(duration)}\n\n"
-            "⚠️ You are not under attack, soldier. Why do you want to abscond? Get back to the battlefield!"
+            "⚠️ Ah! You are not under attack, soldier. Why do you want to abscond? Get back to the battlefield!"
         )
         return
 
