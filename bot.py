@@ -5,7 +5,7 @@ from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKe
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
 # ================= CONFIG =================
-TOKEN = "8370065008:AAEB6zCbHLOakKb16bt-NKqc5P9FSaQOtgc" 
+TOKEN = "YOUR_NEW_TOKEN_HERE" 
 ADMIN_ID = 6021933432
 PRAYER_DRIVE_LINK = "https://t.me/c/3754852727/885"
 
@@ -72,23 +72,10 @@ def main_menu(user_id):
 
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================= LOGIC =================
-
-async def pray(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id in paused_sessions:
-        paused_time = paused_sessions.pop(user_id)
-        active_sessions[user_id] = now() - timedelta(seconds=paused_time)
-        await update.message.reply_text("▶️ Back to battlefield 🔥", reply_markup=main_menu(user_id))
-        return
-    if user_id in active_sessions:
-        await update.message.reply_text("⚠️ Already mounting pressure 🔥")
-        return
-    active_sessions[user_id] = now()
-    await update.message.reply_text("🔥 You are mounting pressure", reply_markup=main_menu(user_id))
+# ================= CALLBACK LOGIC (INLINE BUTTONS) =================
 
 async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the user clicking 'Exit & Discard'"""
+    """Handles the user clicking 'Exit & Discard' or 'Keep Praying'"""
     query = update.callback_query
     user_id = query.from_user.id
     await query.answer()
@@ -97,8 +84,16 @@ async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
         active_sessions.pop(user_id, None)
         paused_sessions.pop(user_id, None)
         await query.edit_message_text("❌ Session discarded. You have exited the battlefield.")
+    
     elif query.data == "keep_praying":
-        await query.edit_message_text("🔥 Standard maintained. Keep mounting pressure, soldier!")
+        # Check if they have a saved duration in paused_sessions
+        if user_id in paused_sessions:
+            elapsed_seconds = paused_sessions.pop(user_id)
+            # Re-calculate the start time as (now - previously elapsed time)
+            active_sessions[user_id] = now() - timedelta(seconds=elapsed_seconds)
+            await query.edit_message_text("🔥 Standard maintained! Prayer is continuing automatically. Keep mounting pressure!")
+        else:
+            await query.edit_message_text("⚠️ No session found to resume.")
 
 # ================= HANDLERS =================
 
@@ -169,28 +164,36 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not registered:
             await update.message.reply_text("❌ Register first")
         else:
-            await pray(update, context)
+            # Reusing the prayer logic
+            if user_id in paused_sessions:
+                p_time = paused_sessions.pop(user_id)
+                active_sessions[user_id] = now() - timedelta(seconds=p_time)
+                await update.message.reply_text("▶️ Resuming... back to the battlefield!")
+            elif user_id in active_sessions:
+                await update.message.reply_text("⚠️ Already mounting pressure 🔥")
+            else:
+                active_sessions[user_id] = now()
+                await update.message.reply_text("🔥 You are mounting pressure")
 
     elif text == "🛑 End Prayer":
         duration = 0
-        if user_id in paused_sessions:
-            duration = paused_sessions[user_id]
-        elif user_id in active_sessions:
+        if user_id in active_sessions:
+            # If they hit end while active, we calculate current duration and move to paused temp
             start_t = active_sessions.pop(user_id)
             duration = int((now() - start_t).total_seconds())
-            paused_sessions[user_id] = duration # Move to paused in case they don't exit
+            paused_sessions[user_id] = duration 
+        elif user_id in paused_sessions:
+            duration = paused_sessions[user_id]
 
-        if duration >= 7200:
+        if duration >= 7200: # 2 Hours
             end_time = now()
             start_time_val = end_time - timedelta(seconds=duration)
             cursor.execute("INSERT INTO sessions (user_id, start_time, end_time, duration_seconds) VALUES (?, ?, ?, ?)", 
                            (user_id, start_time_val.strftime('%Y-%m-%d %H:%M:%S'), end_time.strftime('%Y-%m-%d %H:%M:%S'), duration))
             conn.commit()
-            active_sessions.pop(user_id, None)
             paused_sessions.pop(user_id, None)
             await update.message.reply_text(f"✅ Completed: {format_duration(duration)}\n🔥 High Conversion Rate! Welldone!")
         elif duration > 0:
-            # The Warning with EXIT Option
             keyboard = [
                 [InlineKeyboardButton("✅ Keep Praying", callback_data="keep_praying")],
                 [InlineKeyboardButton("❌ Exit & Discard", callback_data="exit_discard")]
@@ -212,12 +215,12 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= START =================
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔥 Welcome to Prayer WatchLog", reply_markup=main_menu(update.effective_user.id))
+    await update.message.reply_text("🔥 Blessed be the Lord that teacheth my hands to war.Psalm 144:1", reply_markup=main_menu(update.effective_user.id))
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start_cmd))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-app.add_handler(CallbackQueryHandler(handle_exit_choice)) # For the Exit/Keep choice
+app.add_handler(CallbackQueryHandler(handle_exit_choice))
 
-print("🔥 BOT RUNNING (with Exit Option)...")
+print("🔥 BOT RUNNING (Auto-Continue Enabled)...")
 app.run_polling()
