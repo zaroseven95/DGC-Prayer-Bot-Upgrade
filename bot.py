@@ -5,7 +5,7 @@ from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKe
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
 # ================= CONFIG =================
-TOKEN = "8370065008:AAETB7jNEtDExldTPW2Q9HYqc2W3dKt7viU" 
+TOKEN = "8370065008:AAFhiIhDveyKagW9NzXrwE3zon2viWcSUAg" 
 ADMIN_ID = 6021933432
 PRAYER_DRIVE_LINK = "https://t.me/c/3754852727/885"
 
