@@ -1,11 +1,10 @@
 import sqlite3
-import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time as dtime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
 # ================= CONFIG =================
-TOKEN = "8370065008:AAFgY71N4j74S_kiGG9pRH6MgANkVYHSeVM" 
+TOKEN = "8370065008:AAEPZ7_FO2sDvpz99p3pH1XjVv-cd54H7zc" 
 ADMIN_ID = 6021933432
 PRAYER_DRIVE_LINK = "https://t.me/c/3754852727/885"
 
@@ -53,6 +52,17 @@ def format_duration(seconds):
     s = seconds % 60
     return f"{h}h {m}m {s}s"
 
+def is_active_time():
+    current = now().time()
+    return dtime(20, 50) <= current <= dtime(23, 10)
+
+# ================= DAILY RESET =================
+
+async def reset_daily_sessions(context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("DELETE FROM sessions")
+    conn.commit()
+    print("🔄 Daily session reset completed")
+
 # ================= MENU =================
 
 def main_menu(user_id):
@@ -72,7 +82,7 @@ def main_menu(user_id):
 
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================= CALLBACK LOGIC (INLINE BUTTONS) =================
+# ================= CALLBACK =================
 
 async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -82,21 +92,26 @@ async def handle_exit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if query.data == "exit_discard":
         active_sessions.pop(user_id, None)
         paused_sessions.pop(user_id, None)
-        await query.edit_message_text("❌ Session discarded. You have exited the battlefield.")
-    
+        await query.edit_message_text("❌ Session discarded.")
+
     elif query.data == "keep_praying":
         if user_id in paused_sessions:
-            elapsed_seconds = paused_sessions.pop(user_id)
-            active_sessions[user_id] = now() - timedelta(seconds=elapsed_seconds)
-            await query.edit_message_text("🔥 Standard maintained! Prayer is continuing automatically. Keep mounting pressure!")
+            elapsed = paused_sessions.pop(user_id)
+            active_sessions[user_id] = now() - timedelta(seconds=elapsed)
+            await query.edit_message_text("🔥 Prayer continues!")
         else:
-            await query.edit_message_text("⚠️ No session found to resume.")
+            await query.edit_message_text("⚠️ No session found.")
 
 # ================= HANDLERS =================
 
 async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
+
+    if not is_active_time():
+        await update.message.reply_text("⏰ Active only 8:50PM – 11:10PM.")
+        return
+
     registered = is_registered(user_id)
 
     if user_id in awaiting_name:
@@ -108,116 +123,87 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📝 Register":
         awaiting_name.add(user_id)
-        # Added the italicized verse beneath the instruction
         await update.message.reply_text(
             "📝 Enter your name:\n\n"
-            "_\"For the weapons of our warfare are not carnal, but mighty through God to the pulling down of strong holds.\"\n2 Corinthians 10:4_",
+            "_\"For the weapons of our warfare are not carnal...\"_\n2 Corinthians 10:4",
             parse_mode="Markdown"
         )
-    
+
     elif text == "📂 Prayer Drive":
         keyboard = [[InlineKeyboardButton("Open Prayer Drive 📂", url=PRAYER_DRIVE_LINK)]]
-        await update.message.reply_text("Tap below to open the drive:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text("Tap below:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif text == "📘 Guide":
-        await update.message.reply_text(
-            "📘 *HOW TO USE*\n\n"
-            "*🔥 Mount Pressure* -> Start your prayer session.\n"
-            "*🛑 End Prayer* -> Save your record.\n"
-            "*📂 Prayer Drive* -> Access the manual.\n\n"
-            "⚠️ *Note:* 2 hours minimum required to save a session.",
-            parse_mode="Markdown"
-        )
+    elif text == "🔥 Mount Pressure":
+        if not registered:
+            await update.message.reply_text("❌ Register first")
+        else:
+            active_sessions[user_id] = now()
+            context.user_data["start_time"] = now()
+            await update.message.reply_text("🔥 You are mounting pressure")
 
-    elif text == "🏆 Leaderboard":
-        cursor.execute("SELECT u.name, SUM(s.duration_seconds) as t FROM sessions s JOIN users u ON u.user_id = s.user_id GROUP BY u.user_id ORDER BY t DESC LIMIT 10")
-        rows = cursor.fetchall()
-        leader_text = "🏆 LEADERBOARD\n\n" + "\n".join([f"{i}. {r[0]} — {format_duration(r[1])}" for i, r in enumerate(rows, 1)])
-        await update.message.reply_text(leader_text if rows else "No data.")
+    elif text == "🛑 End Prayer":
+        duration = 0
+        start_time_val = context.user_data.get("start_time", now())
 
-    elif text == "👥 Live Room":
-        if not active_sessions:
-            await update.message.reply_text("😴 No one is currently praying.")
-            return
-        live_text = "🔥 LIVE PRAYER ROOM\n\n"
-        for uid, start_t in active_sessions.items():
-            cursor.execute("SELECT name FROM users WHERE user_id=?", (uid,))
-            res = cursor.fetchone()
-            name = res[0] if res else "Unknown"
-            live_text += f"👤 {name}\n⏱ {format_duration(int((now()-start_t).total_seconds()))}\n\n"
-        await update.message.reply_text(live_text)
+        if user_id in active_sessions:
+            start_t = active_sessions.pop(user_id)
+            duration = int((now() - start_t).total_seconds())
+
+        if duration > 0:
+            end_time = now()
+            cursor.execute("INSERT INTO sessions VALUES (NULL, ?, ?, ?, ?)",
+                           (user_id,
+                            start_time_val.strftime('%Y-%m-%d %H:%M:%S'),
+                            end_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            duration))
+            conn.commit()
+
+            status = "✅ PASS" if duration >= 7200 else "❌ FAIL"
+            await update.message.reply_text(f"{status}\n⏱ {format_duration(duration)}")
+
+        else:
+            await update.message.reply_text("❌ No active session.")
 
     elif text == "📊 My Time":
         cursor.execute("SELECT SUM(duration_seconds) FROM sessions WHERE user_id=?", (user_id,))
         total = cursor.fetchone()[0] or 0
-        await update.message.reply_text(f"📊 Total Time: {format_duration(total)}")
+        await update.message.reply_text(f"📊 Today: {format_duration(total)}")
 
-    elif text == "📍 Status":
-        if user_id in active_sessions:
-            d, s = int((now() - active_sessions[user_id]).total_seconds()), "Praying 🔥"
-        elif user_id in paused_sessions:
-            d, s = paused_sessions[user_id], "Preserved Time ⏳"
-        else:
-            await update.message.reply_text("❌ Not praying.")
-            return
-        await update.message.reply_text(f"Status: {s}\n⏱ {format_duration(d)}")
+# ================= REPORT =================
 
-    elif text in ["🔥 Mount Pressure", "▶️ Continue"]:
-        if not registered:
-            await update.message.reply_text("❌ Register first")
-        else:
-            if user_id in paused_sessions:
-                p_time = paused_sessions.pop(user_id)
-                active_sessions[user_id] = now() - timedelta(seconds=p_time)
-                await update.message.reply_text("▶️ Resuming... back to the battlefield!")
-            elif user_id in active_sessions:
-                await update.message.reply_text("⚠️ Already mounting pressure 🔥")
-            else:
-                active_sessions[user_id] = now()
-                await update.message.reply_text("🔥 You are mounting pressure")
+async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("""
+    SELECT u.name, s.start_time, s.end_time, s.duration_seconds
+    FROM sessions s
+    JOIN users u ON u.user_id = s.user_id
+    """)
+    rows = cursor.fetchall()
 
-    elif text == "🛑 End Prayer":
-        duration = 0
-        if user_id in active_sessions:
-            start_t = active_sessions.pop(user_id)
-            duration = int((now() - start_t).total_seconds())
-            paused_sessions[user_id] = duration 
-        elif user_id in paused_sessions:
-            duration = paused_sessions[user_id]
+    if not rows:
+        report = "📋 No activity today."
+    else:
+        report = "📋 DAILY REPORT\n\n"
+        for r in rows:
+            name, start, end, duration = r
+            status = "✅ PASS" if duration >= 7200 else "❌ FAIL"
+            report += f"{name}\n{start} → {end}\n{format_duration(duration)}\n{status}\n\n"
 
-        if duration >= 7200:
-            end_time = now()
-            start_time_val = end_time - timedelta(seconds=duration)
-            cursor.execute("INSERT INTO sessions (user_id, start_time, end_time, duration_seconds) VALUES (?, ?, ?, ?)", 
-                           (user_id, start_time_val.strftime('%Y-%m-%d %H:%M:%S'), end_time.strftime('%Y-%m-%d %H:%M:%S'), duration))
-            conn.commit()
-            paused_sessions.pop(user_id, None)
-            await update.message.reply_text(f"✅ Completed: {format_duration(duration)}\n🔥 High Conversion Rate! Welldone!")
-        elif duration > 0:
-            keyboard = [
-                [InlineKeyboardButton("✅ Keep Praying", callback_data="keep_praying")],
-                [InlineKeyboardButton("❌ Exit & Discard", callback_data="exit_discard")]
-            ]
-            await update.message.reply_text(
-                f"⏱ Session: {format_duration(duration)}\n\n"
-                "⚠️ Soldier, you haven't hit the 2-hour mark! If you exit now, this time will be lost. What do you want to do?",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        else:
-            await update.message.reply_text("❌ No active session.")
-
-    elif text == "⚙️ Admin Report" and user_id == ADMIN_ID:
-        cursor.execute("SELECT users.name, sessions.duration_seconds FROM sessions JOIN users ON users.user_id = sessions.user_id ORDER BY sessions.id DESC LIMIT 10")
-        rows = cursor.fetchall()
-        report = "📋 RECENT RECORDS\n\n" + "\n".join([f"👤 {r[0]} - {format_duration(r[1])}" for r in rows])
-        await update.message.reply_text(report if rows else "No records.")
+    await context.bot.send_message(chat_id=ADMIN_ID, text=report)
 
 # ================= START =================
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔥 Blessed be the Lord that teacheth my hands to war.Psalm 144:1", reply_markup=main_menu(update.effective_user.id))
+    await update.message.reply_text(
+        "🔥 Blessed be the Lord that teacheth my hands to war. Psalm 144:1",
+        reply_markup=main_menu(update.effective_user.id)
+    )
 
 app = ApplicationBuilder().token(TOKEN).build()
+
+# ⏰ Schedule
+app.job_queue.run_daily(send_daily_report, time=dtime(23, 15))
+app.job_queue.run_daily(reset_daily_sessions, time=dtime(0, 0))  # midnight reset
+
 app.add_handler(CommandHandler("start", start_cmd))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
 app.add_handler(CallbackQueryHandler(handle_exit_choice))
