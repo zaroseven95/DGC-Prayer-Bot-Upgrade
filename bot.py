@@ -7,7 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # ================= CONFIG =================
 TOKEN = "8370065008:AAHJh1uD5fipfEidv5G1cho8WWbrHr8tVQY"
-ADMIN_ID = 6021933432
+ADMIN_ID = 6021933432 
 PRAYER_DRIVE_LINK = "https://t.me/c/3754852727/885"
 
 # ================= DATABASE =================
@@ -31,6 +31,7 @@ awaiting_name = set()
 # ================= HELPERS =================
 
 def now():
+    # UTC+1 (Nigeria/UK)
     return datetime.now(timezone.utc) + timedelta(hours=1)
 
 def is_within_time_window():
@@ -45,39 +46,48 @@ def format_duration(seconds):
     s = seconds % 60
     return f"{h}h {m}m {s}s"
 
-# ================= AUTOMATION =================
-
-async def send_daily_report_and_reset(bot):
-    today_str = now().strftime('%Y-%m-%d')
+def get_battle_report():
     cursor.execute("""
         SELECT u.name, s.start_time, s.end_time, s.duration_seconds 
         FROM sessions s JOIN users u ON s.user_id = u.user_id
     """)
     records = cursor.fetchall()
-
+    
+    today_str = now().strftime('%Y-%m-%d')
     report = f"📋 *DAILY BATTLE REPORT* ({today_str})\n\n"
+    
     if not records:
         report += "No successful sessions recorded today."
     else:
         for r in records:
-            report += f"👤 *{r[0]}*\n🛫 {r[1]} 🛬 {r[2]}\n⏳ {format_duration(r[3])}\n\n"
+            report += f"👤 *{r[0]}*\n🛫 In: {r[1]}\n🛬 Out: {r[2]}\n⏳ Dur: {format_duration(r[3])}\n\n"
+    return report
 
+# ================= AUTOMATION =================
+
+async def send_daily_report_and_reset(bot):
+    report = get_battle_report()
     try:
         await bot.send_message(chat_id=ADMIN_ID, text=report, parse_mode="Markdown")
         cursor.execute("DELETE FROM sessions")
         conn.commit()
+        print("✅ Automatic Daily Report Sent & Database Reset.")
     except Exception as e:
         print(f"❌ Report Error: {e}")
 
 # ================= HANDLERS =================
 
-def main_menu():
+def main_menu(user_id):
     kb = [
         ["🔥 Mount Pressure", "🛑 End Prayer"],
         ["📊 My Time", "🏆 Leaderboard"],
         ["📍 Status", "📘 Guide"],
         ["📝 Register", "📂 Prayer Drive"]
     ]
+    # Only show Admin Report button to the Admin
+    if user_id == ADMIN_ID:
+        kb.append(["⚙️ Admin Report"])
+    
     return ReplyKeyboardMarkup(kb, resize_keyboard=True)
 
 async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -88,7 +98,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("INSERT INTO users (user_id, name) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET name=excluded.name", (user_id, text))
         conn.commit()
         awaiting_name.remove(user_id)
-        await update.message.reply_text(f"✅ Soldier {text}, you are registered!", reply_markup=main_menu())
+        await update.message.reply_text(f"✅ Soldier {text}, you are registered!", reply_markup=main_menu(user_id))
         return
 
     cursor.execute("SELECT name FROM users WHERE user_id=?", (user_id,))
@@ -96,16 +106,23 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📝 Register":
         awaiting_name.add(user_id)
-        await update.message.reply_text("📝 Enter your name:\n\n_\"For the weapons of our warfare...\"_", parse_mode="Markdown")
+        await update.message.reply_text("📝 Enter your name:\n\n_\"For the weapons of our warfare are not carnal...\"_", parse_mode="Markdown")
         return
 
     if not user_data:
         await update.message.reply_text("❌ Please register first.")
         return
 
+    # --- ADMIN ACTION ---
+    if text == "⚙️ Admin Report" and user_id == ADMIN_ID:
+        report = get_battle_report()
+        await update.message.reply_text(report, parse_mode="Markdown")
+        return
+
+    # --- PRAYER ACTIONS ---
     if text == "🔥 Mount Pressure":
         if not is_within_time_window():
-            await update.message.reply_text("🚫 *Battlefield Closed.* (8:40 PM - 11:20 PM)")
+            await update.message.reply_text("🚫 *Battlefield Closed.*\nActivity window: 8:40 PM - 11:20 PM.")
             return
         active_sessions[user_id] = now()
         await update.message.reply_text("🔥 *Engage now! Your voice carries fire.*", parse_mode="Markdown")
@@ -113,12 +130,13 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🛑 End Prayer":
         if user_id in active_sessions:
             start_dt = active_sessions.pop(user_id)
-            duration = int((now() - start_dt).total_seconds())
+            end_dt = now()
+            duration = int((end_dt - start_dt).total_seconds())
             if duration >= 7200:
                 cursor.execute("INSERT INTO sessions (user_id, start_time, end_time, duration_seconds) VALUES (?, ?, ?, ?)", 
-                               (user_id, start_dt.strftime('%H:%M:%S'), now().strftime('%H:%M:%S'), duration))
+                               (user_id, start_dt.strftime('%H:%M:%S'), end_dt.strftime('%H:%M:%S'), duration))
                 conn.commit()
-                await update.message.reply_text(f"✅ Saved: {format_duration(duration)}")
+                await update.message.reply_text(f"✅ Session Saved: {format_duration(duration)}")
             else:
                 await update.message.reply_text("⚠️ Standard is 2 hours. Session discarded.")
         else:
@@ -152,7 +170,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "“You are My battle-ax and weapons of war:\n"
         "For with you I will break the nation in pieces;\""
     )
-    await update.message.reply_text(scripture, reply_markup=main_menu(), parse_mode="Markdown")
+    await update.message.reply_text(scripture, reply_markup=main_menu(update.effective_user.id), parse_mode="Markdown")
 
 # ================= MAIN =================
 
@@ -162,10 +180,11 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
 
     scheduler = AsyncIOScheduler()
+    # Reports at 11:30 PM daily
     scheduler.add_job(send_daily_report_and_reset, 'cron', hour=23, minute=30, args=(app.bot,))
     scheduler.start()
 
-    print("🔥 BOT ONLINE...")
+    print("🔥 BOT ONLINE & ADMIN PANEL READY...")
     async with app:
         await app.initialize()
         await app.start()
@@ -173,5 +192,7 @@ async def main():
         while True: await asyncio.sleep(1)
 
 if __name__ == "__main__":
-    try: asyncio.run(main())
-    except: pass
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
