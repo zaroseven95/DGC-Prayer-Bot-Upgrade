@@ -6,7 +6,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # ================= CONFIG =================
-TOKEN = "8370065008:AAGrb7FDcV7qmDrMOSoEXLQiT8egg9DJwno"
+TOKEN = 8370065008:AAGrb7FDcV7qmDrMOSoEXLQiT8egg9DJwno
 ADMIN_ID = 6021933432
 PRAYER_DRIVE_LINK = "https://t.me/c/3754852727/885"
 
